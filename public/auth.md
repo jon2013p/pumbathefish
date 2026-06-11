@@ -1,77 +1,167 @@
-# Auth.md
+# auth.md
 
-## Overview
+You are an agent. This service supports **agentic registration**: discover → register → (claim if needed) → exchange for an access_token → call API → handle revocation. Follow the steps in order; do not skip ahead.
 
-Pumba the Fish API uses OAuth 2.0 / OpenID Connect for authentication. AI agents can register and obtain credentials programmatically.
+Hosts: `https://www.pumbathefish.uk` (resource server and authorization server).
 
-## Agent Registration
+## Step 1 — Discover
 
-Agents can register dynamically via the registration endpoint using OAuth 2.0 Dynamic Client Registration (RFC 7591).
-
-- **Registration URL:** `https://www.pumbathefish.uk/oauth/register`
-- **Method:** `POST`
-- **Content-Type:** `application/json`
-
-### Step 1: Register your agent
-
-Send a POST request to the registration endpoint:
+### 1a. Fetch the Protected Resource Metadata
 
 ```http
-POST /oauth/register HTTP/1.1
+GET /.well-known/oauth-protected-resource
+Host: www.pumbathefish.uk
+```
+
+Response:
+
+```json
+{
+  "resource": "https://www.pumbathefish.uk/api/v1/",
+  "authorization_servers": ["https://www.pumbathefish.uk"],
+  "scopes_supported": ["openid", "profile", "read", "write"],
+  "bearer_methods_supported": ["header", "body"]
+}
+```
+
+### 1b. Fetch the Authorization Server metadata
+
+```http
+GET /.well-known/oauth-authorization-server
+Host: www.pumbathefish.uk
+```
+
+Response includes the `agent_auth` block:
+
+```json
+{
+  "issuer": "https://www.pumbathefish.uk",
+  "token_endpoint": "https://www.pumbathefish.uk/oauth/token",
+  "revocation_endpoint": "https://www.pumbathefish.uk/oauth/revoke",
+  "grant_types_supported": [
+    "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    "urn:workos:agent-auth:grant-type:claim"
+  ],
+  "agent_auth": {
+    "skill": "https://www.pumbathefish.uk/auth.md",
+    "identity_endpoint": "https://www.pumbathefish.uk/agent/identity",
+    "claim_endpoint": "https://www.pumbathefish.uk/agent/identity/claim",
+    "events_endpoint": "https://www.pumbathefish.uk/agent/event/notify",
+    "identity_types_supported": ["anonymous", "identity_assertion", "service_auth"],
+    "identity_assertion": {
+      "assertion_types_supported": ["urn:ietf:params:oauth:token-type:id-jag"]
+    },
+    "events_supported": [
+      "https://schemas.workos.com/events/agent/auth/identity/assertion/revoked"
+    ]
+  }
+}
+```
+
+## Step 2 — Register (Identity Assertion with ID-JAG)
+
+If you have an ID-JAG from your agent provider, post it to the identity endpoint:
+
+```http
+POST /agent/identity HTTP/1.1
 Host: www.pumbathefish.uk
 Content-Type: application/json
 
 {
-  "client_name": "Your Agent Name",
-  "redirect_uris": ["https://your-agent.example.com/callback"],
-  "grant_types": ["authorization_code", "client_credentials"],
-  "response_types": ["code"],
-  "token_endpoint_auth_method": "client_secret_basic",
-  "scope": "openid profile read write"
+  "type": "identity_assertion",
+  "assertion": "<your-id-jag-token>",
+  "scope": "read write"
 }
 ```
 
-### Step 2: Receive client credentials
+Response:
 
-The server responds with your client credentials:
+```json
+{
+  "identity_assertion": "<service-signed-assertion>",
+  "token_type": "urn:ietf:params:oauth:token-type:jwt"
+}
+```
+
+## Step 3 — Register (Anonymous)
+
+If you do not have an ID-JAG, register anonymously:
 
 ```http
-HTTP/1.1 201 Created
+POST /agent/identity HTTP/1.1
+Host: www.pumbathefish.uk
 Content-Type: application/json
 
 {
-  "client_id": "abc123-agent-id",
-  "client_secret": "secret-xyz-456",
-  "client_name": "Your Agent Name",
-  "redirect_uris": ["https://your-agent.example.com/callback"],
-  "grant_types": ["authorization_code", "client_credentials"],
-  "response_types": ["code"],
-  "token_endpoint_auth_method": "client_secret_basic",
-  "scope": "openid profile read write",
-  "client_id_issued_at": 1718100000,
-  "client_secret_expires_at": 0
+  "type": "anonymous",
+  "scope": "read"
 }
 ```
 
-### Step 3: Obtain an access token
+Response:
 
-Use the client credentials to request a token:
+```json
+{
+  "identity_assertion": "<service-signed-assertion>",
+  "claim_token": "<claim-token-for-later>",
+  "token_type": "urn:ietf:params:oauth:token-type:jwt"
+}
+```
+
+## Step 4 — Register (Service Auth / Verified Email)
+
+For verified email flow:
+
+```http
+POST /agent/identity HTTP/1.1
+Host: www.pumbathefish.uk
+Content-Type: application/json
+
+{
+  "type": "service_auth",
+  "login_hint": "user@example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "claim_token": "<claim-token>",
+  "claim": {
+    "user_code": "FISH-1234",
+    "verification_uri": "https://www.pumbathefish.uk/claim"
+  }
+}
+```
+
+Surface `user_code` and `verification_uri` to the user. Then poll the token endpoint (Step 5).
+
+## Step 5 — Exchange for Access Token
+
+Use the identity assertion with a JWT-bearer grant:
 
 ```http
 POST /oauth/token HTTP/1.1
 Host: www.pumbathefish.uk
 Content-Type: application/x-www-form-urlencoded
-Authorization: Basic base64(client_id:client_secret)
 
-grant_type=client_credentials&scope=read+write
+grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=<identity_assertion>
 ```
 
-### Step 4: Token response
+Or, if you have a claim_token (from anonymous or service_auth):
 
 ```http
-HTTP/1.1 200 OK
-Content-Type: application/json
+POST /oauth/token HTTP/1.1
+Host: www.pumbathefish.uk
+Content-Type: application/x-www-form-urlencoded
 
+grant_type=urn:workos:agent-auth:grant-type:claim&claim_token=<claim-token>
+```
+
+Response:
+
+```json
 {
   "access_token": "eyJhbGciOiJSUzI1NiIs...",
   "token_type": "Bearer",
@@ -80,7 +170,7 @@ Content-Type: application/json
 }
 ```
 
-### Step 5: Access protected resources
+## Step 6 — Call the API
 
 ```http
 GET /api/v1/fish-facts HTTP/1.1
@@ -88,38 +178,16 @@ Host: www.pumbathefish.uk
 Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ```
 
-## Supported Identity Types
+## Step 7 — Handle Revocation
 
-- `oauth2_client` — Standard OAuth 2.0 client credentials
-- `openid_connect` — OIDC-based identity with ID tokens
+If the service revokes your identity assertion, it sends a SET (Security Event Token) to your events endpoint. Re-register at Step 2 if revocation occurs.
 
-## Supported Credential Types
+To revoke your own token:
 
-- `client_secret_basic` — HTTP Basic auth with client_id and client_secret
-- `client_secret_post` — Credentials in POST body
-- `private_key_jwt` — JWT signed with client's private key
+```http
+POST /oauth/revoke HTTP/1.1
+Host: www.pumbathefish.uk
+Content-Type: application/x-www-form-urlencoded
 
-## Endpoints
-
-| Endpoint | URL |
-|----------|-----|
-| Authorization | `https://www.pumbathefish.uk/oauth/authorize` |
-| Token | `https://www.pumbathefish.uk/oauth/token` |
-| Registration | `https://www.pumbathefish.uk/oauth/register` |
-| JWKS | `https://www.pumbathefish.uk/.well-known/jwks.json` |
-| Revocation | `https://www.pumbathefish.uk/oauth/revoke` |
-| UserInfo | `https://www.pumbathefish.uk/oauth/userinfo` |
-
-## Scopes
-
-- `openid` — OpenID Connect identity
-- `profile` — User profile information
-- `email` — Email address
-- `read` — Read access to resources
-- `write` — Write access to resources
-
-## Discovery
-
-- OpenID Configuration: `/.well-known/openid-configuration`
-- OAuth Protected Resource: `/.well-known/oauth-protected-resource`
-- OAuth Authorization Server: `/.well-known/oauth-authorization-server`
+token=<access_token>&token_type_hint=access_token
+```

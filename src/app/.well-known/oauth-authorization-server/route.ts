@@ -15,6 +15,8 @@ const authServerMetadata = {
     "authorization_code",
     "client_credentials",
     "refresh_token",
+    "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    "urn:workos:agent-auth:grant-type:claim",
   ],
   token_endpoint_auth_methods_supported: [
     "client_secret_basic",
@@ -24,27 +26,21 @@ const authServerMetadata = {
   code_challenge_methods_supported: ["S256"],
   agent_auth: {
     skill: `${BASE_URL}/auth.md`,
-    register_uri: `${BASE_URL}/oauth/register`,
-    identity_types_supported: ["identity_assertion", "anonymous"],
+    identity_endpoint: `${BASE_URL}/agent/identity`,
+    claim_endpoint: `${BASE_URL}/agent/identity/claim`,
+    events_endpoint: `${BASE_URL}/agent/event/notify`,
+    identity_types_supported: [
+      "anonymous",
+      "identity_assertion",
+      "service_auth",
+    ],
     identity_assertion: {
       assertion_types_supported: [
         "urn:ietf:params:oauth:token-type:id-jag",
-        "verified_email",
       ],
-      credential_types_supported: [
-        "client_secret_basic",
-        "client_secret_post",
-        "private_key_jwt",
-      ],
-      claim_uri: `${BASE_URL}/oauth/userinfo`,
     },
-    anonymous: {
-      credential_types_supported: ["client_secret_basic"],
-      claim_uri: `${BASE_URL}/oauth/userinfo`,
-    },
-    revocation_uri: `${BASE_URL}/oauth/revoke`,
     events_supported: [
-      "urn:ietf:params:oauth:event-type:credential-revoked",
+      "https://schemas.workos.com/events/agent/auth/identity/assertion/revoked",
     ],
   },
 };

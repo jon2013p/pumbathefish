@@ -1,8 +1,10 @@
 import Image from "next/image";
+import { WebMCP } from "./web-mcp";
 
 export default function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-900 to-cyan-700">
+      <WebMCP />
       <div className="text-center">
         <Image
           src="/goldfish.svg"

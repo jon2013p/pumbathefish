@@ -25,14 +25,27 @@ const authServerMetadata = {
   agent_auth: {
     skill: `${BASE_URL}/auth.md`,
     register_uri: `${BASE_URL}/oauth/register`,
-    identity_types_supported: ["oauth2_client", "openid_connect"],
-    credential_types_supported: [
-      "client_secret_basic",
-      "client_secret_post",
-      "private_key_jwt",
+    identity_types_supported: ["identity_assertion", "anonymous"],
+    identity_assertion: {
+      assertion_types_supported: [
+        "urn:ietf:params:oauth:token-type:id-jag",
+        "verified_email",
+      ],
+      credential_types_supported: [
+        "client_secret_basic",
+        "client_secret_post",
+        "private_key_jwt",
+      ],
+      claim_uri: `${BASE_URL}/oauth/userinfo`,
+    },
+    anonymous: {
+      credential_types_supported: ["client_secret_basic"],
+      claim_uri: `${BASE_URL}/oauth/userinfo`,
+    },
+    revocation_uri: `${BASE_URL}/oauth/revoke`,
+    events_supported: [
+      "urn:ietf:params:oauth:event-type:credential-revoked",
     ],
-    claim_url: `${BASE_URL}/oauth/userinfo`,
-    revocation_url: `${BASE_URL}/oauth/revoke`,
   },
 };
 

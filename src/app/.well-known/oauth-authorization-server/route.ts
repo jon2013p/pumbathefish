@@ -23,6 +23,7 @@ const authServerMetadata = {
   ],
   code_challenge_methods_supported: ["S256"],
   agent_auth: {
+    skill: `${BASE_URL}/auth.md`,
     register_uri: `${BASE_URL}/oauth/register`,
     identity_types_supported: ["oauth2_client", "openid_connect"],
     credential_types_supported: [
